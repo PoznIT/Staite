@@ -127,11 +127,20 @@ async def describe_files(
     total = len(tasks)
     logger.info("Describing %d file(s) (cache may reduce API calls)", total)
 
-    for coro in asyncio.as_completed(tasks):
-        rel_path, description, was_miss = await coro
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    errors = []
+    for result in results:
+        if isinstance(result, BaseException):
+            errors.append(result)
+            continue
+        rel_path, description, was_miss = result
         descriptions[rel_path] = description
         if was_miss:
             miss_count += 1
+
+    if errors:
+        raise errors[0]
 
     logger.info(
         "Descriptions complete: %d file(s) processed, %d cache miss(es)",
