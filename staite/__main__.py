@@ -20,7 +20,7 @@ from staite import __version__
 from staite.assembler import assemble, write
 from staite.cache import DescriptionCache
 from staite.config import load_config
-from staite.describer import DescribeResult, describe_files
+from staite.describer import _CONCURRENCY_ANTHROPIC, _CONCURRENCY_AZURE, DescribeResult, describe_files
 from staite.diagram.generator import generate as generate_diagram
 from staite.providers import create_provider
 from staite.scanner import scan
@@ -127,6 +127,7 @@ def run(
                 root=project_root,
                 rel_paths=file_tree.files,
                 cache=desc_cache,
+                concurrency=_CONCURRENCY_AZURE if config.provider == "azure" else _CONCURRENCY_ANTHROPIC,
             )
 
             synthesis_cache = SynthesisCache.load(project_root / config.synthesis_cache)

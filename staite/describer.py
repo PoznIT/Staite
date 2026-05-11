@@ -22,8 +22,9 @@ from staite.providers.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-# Concurrency cap — avoids hammering the API with hundreds of parallel requests
-_MAX_CONCURRENCY = 10
+# Concurrency caps per provider — Azure is more sensitive to parallel connections
+_CONCURRENCY_ANTHROPIC = 10
+_CONCURRENCY_AZURE = 3
 
 
 @dataclass
@@ -98,6 +99,7 @@ async def describe_files(
     root: Path,
     rel_paths: list[Path],
     cache: DescriptionCache,
+    concurrency: int = _DEFAULT_CONCURRENCY,
 ) -> DescribeResult:
     """Describe all files, returning descriptions and the number of cache misses.
 
@@ -110,7 +112,7 @@ async def describe_files(
     Returns:
         DescribeResult with descriptions dict and cache_miss_count.
     """
-    semaphore = asyncio.Semaphore(_MAX_CONCURRENCY)
+    semaphore = asyncio.Semaphore(concurrency)
     tasks = [
         _describe_one(
             provider=provider,
