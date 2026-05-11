@@ -33,8 +33,9 @@ class AnthropicProvider:
         return message.content[0].text.strip()
 
     async def __aenter__(self) -> "AnthropicProvider":
+        await self._client.__aenter__()
         return self
 
     async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
-        await self._client.close()
+        await self._client.__aexit__(exc_type, exc_val, exc_tb)
         logger.debug("Anthropic client closed")

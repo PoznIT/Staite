@@ -25,9 +25,8 @@ exclude:
 #   - key conventions
 #   - where to look first for specific concerns
 #   - things that are intentionally unusual
-instructions: |
-  This is a Python project made to build a state of project in order to feed it to an AI as context
-  It's a CLI using AI to generate the state of the project.
+instructions: ""
+  
 
 # Anthropic model used for file descriptions.
 # Haiku is recommended: cheap, fast, good enough for short descriptions.
