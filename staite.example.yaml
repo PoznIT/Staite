@@ -1,0 +1,66 @@
+# staite.example.yaml — copy to staite.yaml and adjust for your project
+# Run: python -m staite --config staite.yaml
+#
+# PROVIDER OPTIONS
+# ----------------
+# Anthropic (default):
+#   provider: anthropic
+#   Requires: ANTHROPIC_API_KEY environment variable
+#
+# Azure AI Foundry:
+#   provider: azure
+#   Requires: pip install staite[azure]
+#   Authentication (first match wins):
+#     1. azure.api_key in this file
+#     2. AZURE_API_KEY environment variable
+#     3. DefaultAzureCredential (managed identity, Azure CLI, VS Code, service principal)
+
+project_name: MyProject
+
+# Glob patterns (gitignore syntax) for files to include
+include:
+  - src/**
+  - lib/**
+  - "*.py"
+
+# Patterns to exclude (applied after include)
+exclude:
+  - "**/__pycache__/**"
+  - "**/*.pyc"
+  - "**/.DS_Store"
+  - node_modules/**
+  - dist/**
+  - build/**
+  - "**/*.min.js"
+  - "**/*.lock"
+
+# --- Anthropic provider (default) ---
+provider: anthropic
+# Requires ANTHROPIC_API_KEY env var
+
+# --- Azure AI Foundry provider ---
+# provider: azure
+# azure:
+#   endpoint: https://<resource>.services.ai.azure.com/models
+#   api_key: sk-...   # optional; omit to use DefaultAzureCredential
+# model: claude-3-5-haiku  # model name as available in your Azure AI Foundry deployment
+
+# Free-form project context
+instructions: |
+  FastAPI backend + React frontend monorepo.
+  Entry point: src/backend/main.py.
+
+# User-defined coding conventions (mixed with AI-inferred in the output)
+conventions: |
+  All DB calls go through the repository layer in src/backend/repositories/.
+  Errors are always raised as AppError, never raw exceptions.
+
+# Model for file descriptions and synthesis (Haiku recommended — cheap and fast)
+model: claude-haiku-4-5-20251001
+
+# Regenerate use-cases and conventions if >20% of files changed
+regen_threshold: 0.2
+
+output: .staite/STATE.xml
+cache: .staite/cache.json
+synthesis_cache: .staite/synthesis.json

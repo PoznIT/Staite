@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "staite"
+version = "0.1.0"
+description = "Generate a dense AI-readable project state snapshot for use as Claude chat context"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.28.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.0",
+    "pathspec>=0.12",
+    "aiofiles>=23.0",
+]
+
+[project.scripts]
+staite = "staite.__main__:app"
+
+[project.optional-dependencies]
+azure = [
+    "azure-ai-inference>=1.0.0b9",
+    "azure-identity>=1.16.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.14",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["staite*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

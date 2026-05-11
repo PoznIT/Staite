@@ -1,0 +1,41 @@
+# staite.example.yaml — copy to staite.yaml and adjust for your project
+# Run: python -m staite --config staite.yaml
+
+project_name: StAIte
+
+# Glob patterns (gitignore syntax) for files to include
+include:
+  - staite/**
+  - "pyproject.toml"
+
+# Patterns to exclude (applied after include)
+exclude:
+  - "**/__pycache__/**"
+  - "**/*.pyc"
+  - "**/.DS_Store"
+  - node_modules/**
+  - dist/**
+  - build/**
+  - "**/*.min.js"
+  - "**/*.lock"
+
+# Free-form instructions pasted verbatim into <instructions> in the state file.
+# Use this to give the AI context it cannot derive from code alone:
+#   - architecture decisions
+#   - key conventions
+#   - where to look first for specific concerns
+#   - things that are intentionally unusual
+instructions: |
+  This is a Python project made to build a state of project in order to feed it to an AI as context
+  It's a CLI using AI to generate the state of the project.
+
+# Anthropic model used for file descriptions.
+# Haiku is recommended: cheap, fast, good enough for short descriptions.
+# Other options: claude-sonnet-4-6, claude-opus-4-6
+model: claude-haiku-4-5-20251001
+
+# Where to write the final state file (relative to this config's directory)
+output: .staite/STATE.xml
+
+# Where to persist the description cache (relative to this config's directory)
+cache: .staite/cache.json
