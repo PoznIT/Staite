@@ -68,7 +68,6 @@ class AzureProvider:
         response = await self._client.complete(  # type: ignore[union-attr]
             messages=[{"role": "user", "content": prompt}],
             model=self._model,
-            max_tokens=max_tokens,
         )
         if response.usage:
             self.usage += TokenUsage(

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Concurrency caps per provider — Azure is more sensitive to parallel connections
 _CONCURRENCY_ANTHROPIC = 10
-_CONCURRENCY_AZURE = 3
+_CONCURRENCY_AZURE = 5
 
 
 @dataclass
@@ -99,7 +99,7 @@ async def describe_files(
     root: Path,
     rel_paths: list[Path],
     cache: DescriptionCache,
-    concurrency: int = _DEFAULT_CONCURRENCY,
+    concurrency: int
 ) -> DescribeResult:
     """Describe all files, returning descriptions and the number of cache misses.
 
