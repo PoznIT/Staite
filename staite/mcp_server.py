@@ -60,9 +60,8 @@ def _get_server(
     collections: dict[str, object] = {}  # project_name → chroma collection
     for state_path in state_paths:
         if not state_path.exists():
-            raise FileNotFoundError(
-                f"STATE.json not found at {state_path}. Run 'staite run' first."
-            )
+            logger.warning("STATE.json not found at %s — skipping (push via 'staite update')", state_path)
+            continue
         project_name = get_project_name(state_path)
         col_name = _collection_name(project_name)
         if _collection_is_empty(db_path, col_name):

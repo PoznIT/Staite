@@ -249,10 +249,6 @@ def serve(
     """
     _setup_logging(log_level)
 
-    if not state:
-        console.print("[bold red]Error:[/bold red] provide at least one --state path.")
-        raise typer.Exit(code=1)
-
     if transport not in ("stdio", "sse", "http"):
         console.print(
             f"[bold red]Error:[/bold red] --transport must be 'stdio', 'sse', or 'http', got {transport!r}"
@@ -266,8 +262,13 @@ def serve(
         console.print("Install vector deps: [bold]pip install 'staite[vector]'[/bold]")
         raise typer.Exit(code=1) from exc
 
+    if transport == "stdio" and not state:
+        console.print("[bold red]Error:[/bold red] provide at least one --state path for stdio transport.")
+        raise typer.Exit(code=1)
+
     if transport != "stdio":
-        console.print(f"[green]StAIte MCP server listening on http://{host}:{port}[/green]")
+        hint = " (push state with 'staite update')" if not state else ""
+        console.print(f"[green]StAIte MCP server listening on http://{host}:{port}[/green]{hint}")
 
     try:
         _serve(state_paths=list(state), db_path=db, transport=transport, host=host, port=port)
