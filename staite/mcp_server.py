@@ -5,6 +5,9 @@ Four tools:
   get_file(path, project=None)       — direct lookup of a file's description
   get_overview(project)              — use_cases, conventions, and architecture for a project
   list_projects()                    — list all indexed projects
+
+When running with --transport sse or --transport http, a POST /update endpoint is also
+available on the same port for pushing a new STATE.json payload without restarting.
 """
 
 from __future__ import annotations
@@ -36,8 +39,8 @@ def _get_server(
     db_path: Path,
     host: str = "0.0.0.0",
     port: int = 8080,
-):
-    """Build and return the FastMCP server instance."""
+) -> tuple:
+    """Build the FastMCP server instance. Returns (mcp, collections, db_path)."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
@@ -50,7 +53,6 @@ def _get_server(
         _collection_name,
         build_index,
         get_project_name,
-        list_indexed_projects,
         load_collection,
     )
 
@@ -58,9 +60,8 @@ def _get_server(
     collections: dict[str, object] = {}  # project_name → chroma collection
     for state_path in state_paths:
         if not state_path.exists():
-            raise FileNotFoundError(
-                f"STATE.json not found at {state_path}. Run 'staite run' first."
-            )
+            logger.warning("STATE.json not found at %s — skipping (push via 'staite update')", state_path)
+            continue
         project_name = get_project_name(state_path)
         col_name = _collection_name(project_name)
         if _collection_is_empty(db_path, col_name):
@@ -163,7 +164,35 @@ def _get_server(
         ]
         return json.dumps(info, indent=2)
 
-    return mcp
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+
+    from staite.vectorizer import _collection_name, build_index_from_dict, load_collection
+
+    @mcp.custom_route("/update", methods=["POST"])
+    async def update_handler(request: Request) -> JSONResponse:
+        try:
+            state = await request.json()
+        except Exception:
+            return JSONResponse({"status": "error", "message": "Invalid JSON body"}, status_code=400)
+
+        project_name = state.get("metadata", {}).get("name")
+        if not project_name:
+            return JSONResponse(
+                {"status": "error", "message": "Missing metadata.name"}, status_code=422
+            )
+
+        try:
+            col_name, chunk_count = build_index_from_dict(state, db_path)
+        except Exception as exc:
+            logger.exception("Failed to re-index project %r", project_name)
+            return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
+
+        collections[project_name] = load_collection(db_path, _collection_name(project_name))
+        logger.info("Updated index for %r via /update (%d chunks)", project_name, chunk_count)
+        return JSONResponse({"status": "ok", "project": project_name, "chunks": chunk_count})
+
+    return mcp, collections, db_path
 
 
 def serve(
@@ -174,5 +203,5 @@ def serve(
     port: int = 8080,
 ) -> None:
     """Start the MCP server (blocking). transport: 'stdio', 'sse', or 'http'."""
-    mcp = _get_server(state_paths, db_path, host=host, port=port)
+    mcp, _collections, _db_path = _get_server(state_paths, db_path, host=host, port=port)
     mcp.run(transport="streamable-http" if transport == "http" else transport)
