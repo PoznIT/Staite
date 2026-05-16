@@ -276,5 +276,63 @@ def serve(
         raise typer.Exit(code=1) from exc
 
 
+@app.command()
+def update(
+    state: Annotated[
+        Path,
+        typer.Argument(help="Path to the STATE.json file to push."),
+    ],
+    url: Annotated[
+        str,
+        typer.Option("--url", "-u", help="URL of the running MCP server's /update endpoint."),
+    ] = "http://localhost:8080/update",
+    log_level: Annotated[
+        str,
+        typer.Option("--log-level", "-l", help="Logging level (DEBUG, INFO, WARNING, ERROR)."),
+    ] = "INFO",
+) -> None:
+    """Push a STATE.json to a running MCP server to re-index without restarting.
+
+    The server must be running with --transport sse or --transport http.
+
+    Examples:
+
+      staite update .staite/STATE.json
+      staite update .staite/STATE.json --url http://myserver:8080/update
+    """
+    _setup_logging(log_level)
+
+    if not state.exists():
+        console.print(f"[bold red]Error:[/bold red] STATE.json not found at {state}")
+        raise typer.Exit(code=1)
+
+    try:
+        import json
+        import urllib.request
+
+        payload = state.read_bytes()
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        body = json.loads(exc.read())
+        console.print(f"[bold red]Server error {exc.code}:[/bold red] {body.get('message', exc)}")
+        raise typer.Exit(code=1) from exc
+    except OSError as exc:
+        console.print(f"[bold red]Connection error:[/bold red] {exc}")
+        console.print(f"Is the server running at [bold]{url}[/bold]?")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[bold green]✓ Updated project [cyan]{body['project']}[/cyan]"
+        f" — {body['chunks']} chunks indexed[/bold green]"
+    )
+
+
 if __name__ == "__main__":
     app()
