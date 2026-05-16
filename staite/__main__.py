@@ -200,17 +200,20 @@ def run(
 
 @app.command()
 def serve(
+    state: Annotated[
+        list[Path],
+        typer.Option(
+            "--state",
+            help="Path to a STATE.json file to index. Repeat to serve multiple projects.",
+        ),
+    ] = [],
     db: Annotated[
         Path,
-        typer.Option("--db", help="Path to the ChromaDB vector index directory."),
-    ] = Path(".staite/vector_db"),
-    state: Annotated[
-        Path,
-        typer.Option("--state", help="Path to STATE.json used to (re)build the index if missing."),
-    ] = Path(".staite/STATE.json"),
+        typer.Option("--db", help="Central ChromaDB directory shared across all projects."),
+    ] = Path.home() / ".staite" / "vector_db",
     transport: Annotated[
         str,
-        typer.Option("--transport", "-t", help="MCP transport: 'stdio', 'sse', or 'http' (Streamable HTTP)."),
+        typer.Option("--transport", "-t", help="MCP transport: 'stdio', 'sse', or 'http'."),
     ] = "stdio",
     host: Annotated[
         str,
@@ -225,19 +228,35 @@ def serve(
         typer.Option("--log-level", "-l", help="Logging level (DEBUG, INFO, WARNING, ERROR)."),
     ] = "INFO",
 ) -> None:
-    """Start the StAIte MCP server.
+    """Start the StAIte MCP server for one or more projects.
 
-    Builds the vector index from STATE.json on first run (or when the index is missing),
-    then serves three tools — search, get_file, get_overview — via the chosen transport.
+    Builds vector indexes from STATE.json files on first run, then serves four
+    tools — search, get_file, get_overview, list_projects — via the chosen transport.
 
-    stdio  — pipe-based, for Claude Code local CLI clients.
-    http   — Streamable HTTP on --host:--port (recommended for Claude Code / Claude.ai).
-    sse    — SSE on --host:--port (deprecated, kept for compatibility).
+    Examples:
+
+      # Single project (stdio for Claude Code CLI):
+      staite serve --state .staite/STATE.json
+
+      # Multiple projects sharing a central index:
+      staite serve \\
+        --state ~/Projects/api/.staite/STATE.json \\
+        --state ~/Projects/frontend/.staite/STATE.json \\
+        --db ~/.staite/vector_db
+
+      # HTTP transport for Claude.ai / remote clients:
+      staite serve --state .staite/STATE.json --transport http --port 8080
     """
     _setup_logging(log_level)
 
+    if not state:
+        console.print("[bold red]Error:[/bold red] provide at least one --state path.")
+        raise typer.Exit(code=1)
+
     if transport not in ("stdio", "sse", "http"):
-        console.print(f"[bold red]Error:[/bold red] --transport must be 'stdio', 'sse', or 'http', got {transport!r}")
+        console.print(
+            f"[bold red]Error:[/bold red] --transport must be 'stdio', 'sse', or 'http', got {transport!r}"
+        )
         raise typer.Exit(code=1)
 
     try:
@@ -247,11 +266,11 @@ def serve(
         console.print("Install vector deps: [bold]pip install 'staite[vector]'[/bold]")
         raise typer.Exit(code=1) from exc
 
-    if transport == "sse":
-        console.print(f"[green]StAIte MCP server listening on http://{host}:{port}/sse[/green]")
+    if transport != "stdio":
+        console.print(f"[green]StAIte MCP server listening on http://{host}:{port}[/green]")
 
     try:
-        _serve(db_path=db, json_file_path=state, transport=transport, host=host, port=port)
+        _serve(state_paths=list(state), db_path=db, transport=transport, host=host, port=port)
     except (FileNotFoundError, RuntimeError) as exc:
         console.print(f"[bold red]Server error:[/bold red] {exc}")
         raise typer.Exit(code=1) from exc
