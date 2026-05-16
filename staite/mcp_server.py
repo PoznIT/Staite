@@ -195,49 +195,6 @@ def _get_server(
     return mcp, collections, db_path
 
 
-class _CORSMiddleware:
-    """Minimal ASGI CORS layer that handles OPTIONS preflights and injects headers.
-
-    Starlette's CORSMiddleware can disrupt SSE streaming by buffering or
-    mishandling long-lived connections. This bare-ASGI version only touches
-    http.response.start to add headers and returns 204 for OPTIONS — it never
-    buffers or interrupts the body stream.
-    """
-
-    _HEADERS = [
-        (b"access-control-allow-origin", b"*"),
-        (b"access-control-allow-methods", b"GET, POST, OPTIONS"),
-        (b"access-control-allow-headers", b"*"),
-    ]
-
-    def __init__(self, app) -> None:
-        self.app = app
-
-    async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        if scope["method"] == "OPTIONS":
-            await send({
-                "type": "http.response.start",
-                "status": 204,
-                "headers": self._HEADERS + [(b"access-control-max-age", b"86400")],
-            })
-            await send({"type": "http.response.body", "body": b"", "more_body": False})
-            return
-
-        async def _send_with_cors(message):
-            if message["type"] == "http.response.start":
-                headers = list(message.get("headers", []))
-                headers.extend(self._HEADERS)
-                await send({**message, "headers": headers})
-            else:
-                await send(message)
-
-        await self.app(scope, receive, _send_with_cors)
-
-
 def serve(
     state_paths: list[Path],
     db_path: Path = _DEFAULT_DB_PATH,
@@ -247,17 +204,4 @@ def serve(
 ) -> None:
     """Start the MCP server (blocking). transport: 'stdio', 'sse', or 'http'."""
     mcp, _collections, _db_path = _get_server(state_paths, db_path, host=host, port=port)
-
-    if transport == "stdio":
-        mcp.run(transport="stdio")
-        return
-
-    try:
-        import uvicorn
-    except ImportError as exc:
-        raise RuntimeError(
-            "uvicorn not installed. Run: pip install 'staite[vector]'"
-        ) from exc
-
-    asgi_app = mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
-    uvicorn.run(_CORSMiddleware(asgi_app), host=host, port=port)
+    mcp.run(transport="streamable-http" if transport == "http" else transport)

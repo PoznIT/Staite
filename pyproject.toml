@@ -28,7 +28,6 @@ vector = [
     "chromadb>=0.5",
     "sentence-transformers>=3.0",
     "mcp>=1.0",
-    "uvicorn>=0.30",
 ]
 azure = [
     "azure-ai-inference>=1.0.0b9",
