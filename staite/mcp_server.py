@@ -5,6 +5,9 @@ Four tools:
   get_file(path, project=None)       — direct lookup of a file's description
   get_overview(project)              — use_cases, conventions, and architecture for a project
   list_projects()                    — list all indexed projects
+
+When running with --transport sse or --transport http, a POST /update endpoint is also
+available for pushing a new STATE.json payload without restarting the server.
 """
 
 from __future__ import annotations
@@ -36,8 +39,8 @@ def _get_server(
     db_path: Path,
     host: str = "0.0.0.0",
     port: int = 8080,
-):
-    """Build and return the FastMCP server instance."""
+) -> tuple:
+    """Build the FastMCP server instance. Returns (mcp, collections, db_path)."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
@@ -50,7 +53,6 @@ def _get_server(
         _collection_name,
         build_index,
         get_project_name,
-        list_indexed_projects,
         load_collection,
     )
 
@@ -163,7 +165,52 @@ def _get_server(
         ]
         return json.dumps(info, indent=2)
 
-    return mcp
+    return mcp, collections, db_path
+
+
+def _build_app(mcp, collections: dict, db_path: Path, transport: str):
+    """Wrap FastMCP in a Starlette app that also serves POST /update."""
+    try:
+        from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
+        from starlette.routing import Mount, Route
+    except ImportError as exc:
+        raise RuntimeError(
+            "Starlette not installed. Run: pip install 'staite[vector]'"
+        ) from exc
+
+    from staite.vectorizer import build_index_from_dict, load_collection, _collection_name
+
+    async def update_handler(request: Request) -> JSONResponse:
+        try:
+            state = await request.json()
+        except Exception:
+            return JSONResponse({"status": "error", "message": "Invalid JSON body"}, status_code=400)
+
+        project_name = state.get("metadata", {}).get("name")
+        if not project_name:
+            return JSONResponse(
+                {"status": "error", "message": "Missing metadata.name"}, status_code=422
+            )
+
+        try:
+            col_name, chunk_count = build_index_from_dict(state, db_path)
+        except Exception as exc:
+            logger.exception("Failed to re-index project %r", project_name)
+            return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
+
+        # Reload the collection handle so in-flight queries see fresh data.
+        collections[project_name] = load_collection(db_path, _collection_name(project_name))
+        logger.info("Updated index for %r via /update (%d chunks)", project_name, chunk_count)
+        return JSONResponse({"status": "ok", "project": project_name, "chunks": chunk_count})
+
+    mcp_asgi = mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
+
+    return Starlette(routes=[
+        Route("/update", update_handler, methods=["POST"]),
+        Mount("/", mcp_asgi),
+    ])
 
 
 def serve(
@@ -174,5 +221,19 @@ def serve(
     port: int = 8080,
 ) -> None:
     """Start the MCP server (blocking). transport: 'stdio', 'sse', or 'http'."""
-    mcp = _get_server(state_paths, db_path, host=host, port=port)
-    mcp.run(transport="streamable-http" if transport == "http" else transport)
+    mcp, collections, db_path = _get_server(state_paths, db_path, host=host, port=port)
+
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+        return
+
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise RuntimeError(
+            "uvicorn not installed. Run: pip install 'staite[vector]'"
+        ) from exc
+
+    app = _build_app(mcp, collections, db_path, transport)
+    logger.info("Serving MCP (%s) + POST /update on %s:%d", transport, host, port)
+    uvicorn.run(app, host=host, port=port)

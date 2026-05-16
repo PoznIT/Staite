@@ -63,8 +63,7 @@ def _collection_is_empty(db_path: Path, collection_name: str) -> bool:
         return True
 
 
-def _parse_chunks(json_path: Path, project_name: str) -> list[dict]:
-    doc = json.loads(json_path.read_text(encoding="utf-8"))
+def _parse_chunks_from_dict(doc: dict, project_name: str) -> list[dict]:
     chunks: list[dict] = []
 
     conv = doc.get("conventions", {})
@@ -97,29 +96,26 @@ def _parse_chunks(json_path: Path, project_name: str) -> list[dict]:
                 "metadata": {"type": "file", "path": path, "project": project_name},
             })
 
-    logger.debug("Parsed %d chunks from %s", len(chunks), json_path)
+    logger.debug("Parsed %d chunks for project %r", len(chunks), project_name)
     return chunks
 
 
-def build_index(json_path: Path, db_path: Path) -> str:
-    """Embed STATE.json chunks and upsert into the project's ChromaDB collection.
+def _parse_chunks(json_path: Path, project_name: str) -> list[dict]:
+    doc = json.loads(json_path.read_text(encoding="utf-8"))
+    return _parse_chunks_from_dict(doc, project_name)
 
-    Returns the collection name used.
-    """
+
+def _embed_and_upsert(chunks: list[dict], project_name: str, db_path: Path) -> tuple[str, int]:
+    """Embed chunks and upsert into ChromaDB. Returns (collection_name, chunk_count)."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
         raise RuntimeError("Vector deps not installed. Run: pip install 'staite[vector]'") from exc
 
-    if not json_path.exists():
-        raise FileNotFoundError(f"STATE.json not found at {json_path}. Run 'staite run' first.")
-
-    project_name = get_project_name(json_path)
     col_name = _collection_name(project_name)
-    chunks = _parse_chunks(json_path, project_name)
     if not chunks:
-        logger.warning("No chunks extracted from %s — index will be empty", json_path)
-        return col_name
+        logger.warning("No chunks for project %r — index will be empty", project_name)
+        return col_name, 0
 
     logger.info("Loading embedding model %s …", _MODEL_NAME)
     model = SentenceTransformer(_MODEL_NAME)
@@ -136,7 +132,33 @@ def build_index(json_path: Path, db_path: Path) -> str:
         metadatas=[c["metadata"] for c in chunks],
     )
     logger.info("Index built for %r: %d chunks in collection %r", project_name, len(chunks), col_name)
+    return col_name, len(chunks)
+
+
+def build_index(json_path: Path, db_path: Path) -> str:
+    """Embed STATE.json chunks and upsert into the project's ChromaDB collection.
+
+    Returns the collection name used.
+    """
+    if not json_path.exists():
+        raise FileNotFoundError(f"STATE.json not found at {json_path}. Run 'staite run' first.")
+
+    project_name = get_project_name(json_path)
+    chunks = _parse_chunks(json_path, project_name)
+    col_name, _ = _embed_and_upsert(chunks, project_name, db_path)
     return col_name
+
+
+def build_index_from_dict(state: dict, db_path: Path) -> tuple[str, int]:
+    """Like build_index() but accepts a parsed state dict instead of a file path.
+
+    Returns (collection_name, chunk_count).
+    """
+    project_name = state.get("metadata", {}).get("name")
+    if not project_name:
+        raise ValueError("state dict is missing metadata.name")
+    chunks = _parse_chunks_from_dict(state, project_name)
+    return _embed_and_upsert(chunks, project_name, db_path)
 
 
 def load_collection(db_path: Path, collection_name: str):  # type: ignore[return]
