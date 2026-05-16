@@ -1,5 +1,5 @@
 # staite.example.yaml — copy to staite.yaml and adjust for your project
-# Run: python -m staite --config staite.yaml
+# Run: staite run --config staite.yaml
 #
 # PROVIDER OPTIONS
 # ----------------
