@@ -17,12 +17,18 @@ dependencies = [
     "pathspec>=0.12",
     "aiofiles>=23.0",
     "aiohttp>=3.9",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]
 staite = "staite.__main__:app"
 
 [project.optional-dependencies]
+vector = [
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
+    "mcp>=1.0",
+]
 azure = [
     "azure-ai-inference>=1.0.0b9",
     "azure-identity>=1.16.0",
