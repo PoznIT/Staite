@@ -204,4 +204,24 @@ def serve(
 ) -> None:
     """Start the MCP server (blocking). transport: 'stdio', 'sse', or 'http'."""
     mcp, _collections, _db_path = _get_server(state_paths, db_path, host=host, port=port)
-    mcp.run(transport="streamable-http" if transport == "http" else transport)
+
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+        return
+
+    try:
+        import uvicorn
+        from starlette.middleware.cors import CORSMiddleware
+    except ImportError as exc:
+        raise RuntimeError(
+            "uvicorn not installed. Run: pip install 'staite[vector]'"
+        ) from exc
+
+    asgi_app = mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
+    app = CORSMiddleware(
+        asgi_app,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    uvicorn.run(app, host=host, port=port)
