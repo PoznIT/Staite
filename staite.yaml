@@ -34,7 +34,7 @@ instructions: ""
 model: claude-haiku-4-5-20251001
 
 # Where to write the final state file (relative to this config's directory)
-output: .staite/STATE.xml
+output: .staite/STATE.json
 
 # Where to persist the description cache (relative to this config's directory)
 cache: .staite/cache.json

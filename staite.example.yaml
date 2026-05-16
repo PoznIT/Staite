@@ -61,6 +61,6 @@ model: claude-haiku-4-5-20251001
 # Regenerate use-cases and conventions if >20% of files changed
 regen_threshold: 0.2
 
-output: .staite/STATE.xml
+output: .staite/STATE.json
 cache: .staite/cache.json
 synthesis_cache: .staite/synthesis.json

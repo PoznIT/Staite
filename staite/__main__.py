@@ -72,7 +72,7 @@ def run(
         typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version."),
     ] = None,
 ) -> None:
-    """Generate a STATE.xml snapshot of the project for use as Claude chat context."""
+    """Generate a STATE.json snapshot of the project for use as Claude chat context."""
     effective_level = "DEBUG" if verbose else log_level
     _setup_logging(effective_level)
     logger = logging.getLogger(__name__)
@@ -181,7 +181,7 @@ def run(
     console.print("[green]✓[/green] Diagram generated")
 
     # ------------------------------------------------------------------ assemble
-    state_xml = assemble(
+    state_json = assemble(
         project_name=config.project_name,
         instructions=config.instructions,
         user_conventions=config.conventions,
@@ -193,9 +193,68 @@ def run(
     )
 
     output_path = project_root / config.output
-    write(state_xml, output_path)
+    write(state_json, output_path)
 
     console.print(f"[bold green]✓ State written to {output_path}[/bold green]")
+
+
+@app.command()
+def serve(
+    db: Annotated[
+        Path,
+        typer.Option("--db", help="Path to the ChromaDB vector index directory."),
+    ] = Path(".staite/vector_db"),
+    state: Annotated[
+        Path,
+        typer.Option("--state", help="Path to STATE.json used to (re)build the index if missing."),
+    ] = Path(".staite/STATE.json"),
+    transport: Annotated[
+        str,
+        typer.Option("--transport", "-t", help="MCP transport: 'stdio', 'sse', or 'http' (Streamable HTTP)."),
+    ] = "stdio",
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Bind host for HTTP/SSE transport."),
+    ] = "0.0.0.0",
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Bind port for HTTP/SSE transport."),
+    ] = 8080,
+    log_level: Annotated[
+        str,
+        typer.Option("--log-level", "-l", help="Logging level (DEBUG, INFO, WARNING, ERROR)."),
+    ] = "INFO",
+) -> None:
+    """Start the StAIte MCP server.
+
+    Builds the vector index from STATE.json on first run (or when the index is missing),
+    then serves three tools — search, get_file, get_overview — via the chosen transport.
+
+    stdio  — pipe-based, for Claude Code local CLI clients.
+    http   — Streamable HTTP on --host:--port (recommended for Claude Code / Claude.ai).
+    sse    — SSE on --host:--port (deprecated, kept for compatibility).
+    """
+    _setup_logging(log_level)
+
+    if transport not in ("stdio", "sse", "http"):
+        console.print(f"[bold red]Error:[/bold red] --transport must be 'stdio', 'sse', or 'http', got {transport!r}")
+        raise typer.Exit(code=1)
+
+    try:
+        from staite.mcp_server import serve as _serve
+    except ImportError as exc:
+        console.print(f"[bold red]Import error:[/bold red] {exc}")
+        console.print("Install vector deps: [bold]pip install 'staite[vector]'[/bold]")
+        raise typer.Exit(code=1) from exc
+
+    if transport == "sse":
+        console.print(f"[green]StAIte MCP server listening on http://{host}:{port}/sse[/green]")
+
+    try:
+        _serve(db_path=db, json_file_path=state, transport=transport, host=host, port=port)
+    except (FileNotFoundError, RuntimeError) as exc:
+        console.print(f"[bold red]Server error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
 
 
 if __name__ == "__main__":

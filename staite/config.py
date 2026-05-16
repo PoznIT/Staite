@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class StaiteConfig(BaseModel):
     provider: Literal["anthropic", "azure"] = "anthropic"
     azure: AzureConfig | None = None
     model: str = "claude-haiku-4-5-20251001"
-    output: Path = Path(".staite/STATE.xml")
+    output: Path = Path(".staite/STATE.json")
     cache: Path = Path(".staite/cache.json")
     synthesis_cache: Path = Path(".staite/synthesis.json")
     regen_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -84,6 +85,7 @@ def load_config(path: Path) -> StaiteConfig:
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
 
+    load_dotenv(path.parent / ".env")
     logger.debug("Loading config from %s", path)
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
 
