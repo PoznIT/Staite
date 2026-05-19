@@ -10,9 +10,11 @@ class ChromaDbSettings(BaseModel):
     host: str
     port: int
 
+
 class OllamaSettings(BaseModel):
     url: str
     model: str
+    num_ctx: int = Field(default=8192)
 
 
 class ServerSettings(BaseModel):

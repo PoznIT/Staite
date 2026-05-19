@@ -27,12 +27,6 @@ from src.vectorizer import VectorClient, _collection_name
 
 logger = logging.getLogger(__name__)
 
-
-
-
-
-
-
 def _embed(text: str, ollama: OllamaSettings) -> list[float]:
     with httpx.Client(timeout=30) as client:
         response = client.post(

@@ -107,7 +107,12 @@ class VectorClient:
         with httpx.Client(timeout=60) as client:
             response = client.post(
                 f"{self.__ollama_settings.url}/api/embed",
-                json={"model": self.__ollama_settings.model, "input": texts},
+                json={
+                    "model": self.__ollama_settings.model,
+                    "input": texts,
+                    "options": {"num_ctx": self.__ollama_settings.num_ctx},
+                },
+
             )
             response.raise_for_status()
             return response.json()["embeddings"]
