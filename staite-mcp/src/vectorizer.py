@@ -104,18 +104,20 @@ class VectorClient:
         return chunks
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        embeddings = []
         with httpx.Client(timeout=60) as client:
-            response = client.post(
-                f"{self.__ollama_settings.url}/api/embed",
-                json={
-                    "model": self.__ollama_settings.model,
-                    "input": texts,
-                    "options": {"num_ctx": self.__ollama_settings.num_ctx},
-                },
-
-            )
-            response.raise_for_status()
-            return response.json()["embeddings"]
+            for text in texts:
+                response = client.post(
+                    f"{self.__ollama_settings.url}/api/embed",
+                    json={
+                        "model": self.__ollama_settings.model,
+                        "input": text,  # single string, not a list
+                        "options": {"num_ctx": self.__ollama_settings.num_ctx},
+                    },
+                )
+                response.raise_for_status()
+                embeddings.append(response.json()["embeddings"][0])
+        return embeddings
 
     def _embed_and_upsert(self, chunks: list[dict], project_name: str) -> tuple[str, int]:
         col_name = _collection_name(project_name)
