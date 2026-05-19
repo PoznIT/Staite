@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class AzureConfig(BaseModel):  # plain BaseModel, not BaseSettings
     endpoint: str = Field(..., min_length=1)
+    model: str | None
     api_key: str | None = None
 
 class AnthropicConfig(BaseModel):  # plain BaseModel, not BaseSettings

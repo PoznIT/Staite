@@ -2,6 +2,7 @@
 
 import logging
 
+from staite_cli.config.run_config import AnthropicConfig, AzureConfig, OllamaConfig
 from staite_cli.providers.anthropic_provider import AnthropicProvider
 from staite_cli.providers.azure_provider import AzureProvider
 from staite_cli.providers.base import LLMProvider
@@ -12,27 +13,29 @@ logger = logging.getLogger(__name__)
 
 def create_provider(
     provider_type: str,
-    model: str,
-    anthropic_api_key: str | None = None,
-    azure_endpoint: str | None = None,
-    azure_api_key: str | None = None,
-    ollama_url: str | None = None,
-    ollama_model: str | None = None,
+    anthropic: AnthropicConfig = None,
+    azure: AzureConfig = None,
+    ollama: OllamaConfig = None
 ) -> LLMProvider:
 
     if provider_type == "anthropic":
-        logger.debug("Creating AnthropicProvider (model=%s)", model)
-        return AnthropicProvider(model=model, api_key=anthropic_api_key)
+        if not anthropic:
+            raise ValueError("anthropic config is required when provider is anthropic")
+
+        logger.debug("Creating AnthropicProvider (model=%s)", anthropic.model)
+        return AnthropicProvider(model=anthropic.model, api_key=anthropic.api_key)
 
     if provider_type == "azure":
-        if not azure_endpoint:
-            raise ValueError("azure.endpoint is required when provider is 'azure'")
-        logger.debug("Creating AzureProvider (model=%s, endpoint=%s)", model, azure_endpoint)
-        return AzureProvider(endpoint=azure_endpoint, model=model, api_key=azure_api_key)
+        if not azure:
+            raise ValueError("azure config is required when provider is azure")
+        logger.debug("Creating AzureProvider (model=%s, endpoint=%s)", azure.model, azure.endpoint)
+        return AzureProvider(endpoint=azure.endpoint, model=azure.model, api_key=azure.api_key)
 
     if provider_type == "ollama":
-        url = ollama_url or "http://localhost:11434"
-        resolved_model = ollama_model or model
+        if not ollama:
+            raise ValueError("ollama config is required when provider is 'ollama'")
+        url = ollama.url or "http://localhost:11434"
+        resolved_model = ollama.model
         logger.debug("Creating OllamaProvider (model=%s, url=%s)", resolved_model, url)
         return OllamaProvider(model=resolved_model, url=url, timeout=600)
 

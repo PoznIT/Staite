@@ -106,15 +106,11 @@ def run(
   desc_cache = DescriptionCache.load(project_root / config.cache)
 
   try:
-    # TODO clean up this bs
     provider = create_provider(
       provider_type=config.provider,
-      model=config.anthropic.model,
-      anthropic_api_key=config.anthropic.api_key if config.anthropic else None,
-      azure_endpoint=config.azure.endpoint if config.azure else None,
-      azure_api_key=config.azure.api_key if config.azure else None,
-      ollama_url=config.ollama.url if config.ollama else None,
-      ollama_model=config.ollama.model if config.ollama else None,
+      anthropic= config.anthropic,
+      azure = config.azure,
+      ollama = config.ollama
     )
   except (ValueError, ImportError) as exc:
     console.print(f"[bold red]Provider error:[/bold red] {exc}")
