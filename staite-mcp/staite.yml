@@ -1,0 +1,37 @@
+# staite.example.yaml — copy to staite.yml and adjust for your project
+# Run: python -m staite --config staite.yml
+
+project_name: staite-mcp
+provider: anthropic
+anthropic:
+  model: claude-haiku-4-5-20251001
+
+# Glob patterns (gitignore syntax) for files to include
+include:
+  - src/**
+  - pyproject.toml
+  - "**.py"
+  - README.md
+
+# Patterns to exclude (applied after include)
+exclude:
+  - tests/**
+  - venv/**
+  - tests/**
+  - staite.egg-inf/**
+  - .idea/**
+  - "**/__pycache__/**"
+  - "**/*.pyc"
+  - "**/.DS_Store"
+  - node_modules/**
+  - dist/**
+  - build/**
+  - "**/*.min.js"
+  - "**/*.lock"
+
+instructions: |
+  This project is meant to create an MCP server to expose a vectorized version of the staite of a project
+  A staite is JSON file generated via the staite-cli that summarize project files and creates a synthesis of what the project is supposed to do
+
+output: .staite/STATE.json
+cache: .staite/cache.json

@@ -1,0 +1,14 @@
+log_level: INFO
+
+chroma:
+  host: chroma
+  port: 8000
+
+ollama:
+  url: http://ollama:11434
+  model: nomic-embed-text
+
+server:
+  transport: http
+  host: 0.0.0.0
+  port: 8080
