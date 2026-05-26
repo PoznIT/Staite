@@ -14,6 +14,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import aiofiles
 
@@ -99,7 +100,8 @@ async def describe_files(
     root: Path,
     rel_paths: list[Path],
     cache: DescriptionCache,
-    concurrency: int
+    concurrency: int,
+    on_file_done: Callable[[str, bool], None] | None = None,
 ) -> DescribeResult:
     """Describe all files, returning descriptions and the number of cache misses.
 
@@ -108,26 +110,32 @@ async def describe_files(
         root: Project root directory.
         rel_paths: Files to describe, as paths relative to root.
         cache: Description cache (will be mutated with new entries).
+        on_file_done: Optional callback invoked after each file with
+            ``(rel_path, was_cache_miss)``.  Useful for progress reporting.
 
     Returns:
         DescribeResult with descriptions dict and cache_miss_count.
     """
     semaphore = asyncio.Semaphore(concurrency)
-    tasks = [
-        _describe_one(
+
+    async def _task(p: Path):
+        result = await _describe_one(
             provider=provider,
             rel_path=p.as_posix(),
             abs_path=root / p,
             cache=cache,
             semaphore=semaphore,
         )
-        for p in rel_paths
-    ]
+        if on_file_done:
+            on_file_done(result[0], result[2])  # rel_path, was_miss
+        return result
+
+    tasks = [_task(p) for p in rel_paths]
 
     descriptions: dict[str, str] = {}
     miss_count = 0
     total = len(tasks)
-    logger.info("Describing %d file(s) (cache may reduce API calls)", total)
+    logger.debug("Describing %d file(s) (cache may reduce API calls)", total)
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -144,7 +152,7 @@ async def describe_files(
     if errors:
         raise errors[0]
 
-    logger.info(
+    logger.debug(
         "Descriptions complete: %d file(s) processed, %d cache miss(es)",
         total,
         miss_count,

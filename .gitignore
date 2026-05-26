@@ -13,7 +13,6 @@ venv/
 env/
 
 # StAIte output & cache
-.staite/
 
 # Secrets
 .env

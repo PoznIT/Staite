@@ -27,7 +27,8 @@ RUN useradd --create-home --shell /bin/bash app
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
-COPY . .
+COPY main.py .
+COPY src/ ./src/
 
 EXPOSE 8000
 

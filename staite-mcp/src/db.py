@@ -60,19 +60,22 @@ async def init_pool(settings: PostgresSettings) -> asyncpg.Pool:
 # ---------------------------------------------------------------------------
 
 
-async def upsert_project(pool: asyncpg.Pool, name: str, file_chunk_count: int) -> None:
+async def upsert_project(pool: asyncpg.Pool, name: str, file_chunk_count: int) -> tuple[str, str]:
+    """Upsert a project row. Returns (action, last_indexed_at_iso) where action is 'created' or 'updated'."""
     async with pool.acquire() as conn:
-        await conn.execute(
+        row = await conn.fetchrow(
             """
             INSERT INTO projects (name, last_indexed_at, file_chunk_count)
             VALUES ($1, now(), $2)
             ON CONFLICT (name) DO UPDATE
                 SET last_indexed_at  = now(),
                     file_chunk_count = EXCLUDED.file_chunk_count
+            RETURNING last_indexed_at, (xmax = 0) AS is_new
             """,
             name,
             file_chunk_count,
         )
+    return ("created" if row["is_new"] else "updated"), row["last_indexed_at"].isoformat()
 
 
 async def upsert_overview(
@@ -83,7 +86,8 @@ async def upsert_overview(
     conventions: str | None,
     diagram: str | None,
     file_tree: str | None,
-) -> None:
+) -> list[str]:
+    """Upsert overview data. Returns the list of field names that were non-null."""
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -103,6 +107,16 @@ async def upsert_overview(
             diagram,
             file_tree,
         )
+    return [
+        field
+        for field, value in (
+            ("use_cases", use_cases),
+            ("conventions", conventions),
+            ("diagram", diagram),
+            ("file_tree", file_tree),
+        )
+        if value is not None
+    ]
 
 
 # ---------------------------------------------------------------------------

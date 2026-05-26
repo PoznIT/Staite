@@ -1,0 +1,248 @@
+<project_state>
+  <metadata>
+    <name>StAIte</name>
+    <generated_at>2026-05-16T12:27:40+00:00</generated_at>
+    <file_count>23</file_count>
+  </metadata>
+
+  <instructions>
+
+  </instructions>
+
+  <use_cases>
+    # StAIte Use-Case Scenarios
+
+1. **Generate a Claude-Ready Project Context Snapshot**
+   - **Goal:** A developer wants to create a single XML file containing their entire project's structure, file descriptions, and architecture so they can paste it into Claude for comprehensive code understanding.
+   - **Key Components:** `__main__.py` (orchestrates the full `run()` pipeline) → `scanner.py` (discovers files) → `describer.py` (generates AI summaries with caching) → `diagram/generator.py` (builds architecture diagrams) → `synthesizer.py` (infers use-cases and conventions) → `assembler.py` (merges everything into STATE.xml).
+
+2. **Serve a Vector-Indexed Project for MCP Tools**
+   - **Goal:** An AI agent (like Claude via MCP) needs to query a project semantically—searching for files by meaning and retrieving specific code sections without reading the entire codebase.
+   - **Key Components:** `__main__.py` (invokes `serve()` command) → `mcp_server.py` (exposes MCP tools) → `vectorizer.py` (embeds STATE.xml into ChromaDB) → `providers/` (LLM for embeddings). Tools expose `search()`, `get_file()`, and `get_overview()` for Claude integration.
+
+3. **Cache and Incrementally Update Project Analysis**
+   - **Goal:** A developer runs StAIte multiple times on the same project; unchanged files should skip re-description to save API costs and time.
+   - **Key Components:** `cache.py` (tracks file content hashes and cached descriptions) → `describer.py` (skips LLM calls for unchanged files and persists cache) → `synthesizer.py` (also caches use-cases/conventions based on file change threshold). Configuration stored in `config.py`.
+
+4. **Extract and Visualize Project Dependencies**
+   - **Goal:** A developer wants a Mermaid diagram showing their project's directory structure plus inter-file dependencies to understand code organization.
+   - **Key Components:** `diagram/tree.py` (renders directory structure) → `diagram/generator.py` (resolves imports to files) → `diagram/parsers/` (language-specific parsers: `python.py` for imports, `javascript.py` for require/import statements). Output embedded in STATE.xml by `assembler.py`.
+
+5. **Multi-Provider LLM Integration with Token Tracking**
+   - **Goal:** A team wants flexibility to switch between Anthropic and Azure AI for file descriptions and synthesis based on cost or availability, with visibility into token usage.
+   - **Key Components:** `config.py` (specifies provider type and credentials) → `providers/__init__.py` (factory function to instantiate correct provider) → `providers/anthropic_provider.py` or `providers/azure_provider.py` (execute LLM calls) → `providers/base.py` (shared `LLMProvider` protocol and `TokenUsage` tracking). Used by `describer.py` and `synthesizer.py`.
+  </use_cases>
+
+  <conventions>
+    [AI-inferred]
+    # StAIte Coding Conventions + Architectural Patterns
+
+- **Protocol-Based Abstraction**: Uses `LanguageParser` (diagram/parsers/base.py) and `LLMProvider` (providers/base.py) as runtime-checkable protocols to enable pluggable implementations without tight coupling across language parsers and LLM backends.
+
+- **Factory Pattern**: `providers/__init__.py` implements `create_provider()` factory function to instantiate the correct LLM provider (`AnthropicProvider` or `AzureProvider`) based on configuration, decoupling provider selection from the rest of the codebase.
+
+- **Async/Await with Context Managers**: All LLM providers implement `__aenter__`/`__aexit__` for resource lifecycle management, and core functions like `describe_files()` and `synthesize()` use async patterns with semaphores for concurrency control.
+
+- **Pydantic Models for Validation**: Configuration (config.py), cache entries (cache.py), and synthesis records (synthesizer.py) use Pydantic models with validators to enforce data integrity and provide runtime type safety.
+
+- **Multi-Layer Caching Strategy**: Implements three caches—file description cache (cache.py via SHA-256), synthesis cache (synthesizer.py), and vector index (vectorizer.py)—to avoid redundant LLM calls and enable incremental updates.
+
+- **Pipeline Architecture**: `__main__.py` orchestrates a sequential pipeline (scan → describe → synthesize → diagram → assemble → vectorize), with each module (scanner, describer, synthesizer, diagram/generator, assembler, vectorizer) handling a distinct transformation step.
+
+- **Dataclass/Record Pattern for Results**: Uses lightweight dataclasses (`DescribeResult`, `SynthesisResult`, `FileTree`) to bundle related outputs from pipeline stages, avoiding tuple unpacking and improving code readability.
+
+- **Language Parser Registry**: `diagram/parsers/__init__.py` maintains a `_DEFAULT_PARSERS` list and `build_registry()` function, allowing extensible per-language dependency extraction without modifying core diagram generation logic.
+  </conventions>
+
+  <file_tree>
+    /
+    ├── .claude
+    │   └── worktrees
+    │       └── naughty-poincare-2ef9aa
+    │           └── pyproject.toml
+    ├── pyproject.toml
+    └── staite
+        ├── __init__.py
+        ├── __main__.py
+        ├── assembler.py
+        ├── cache.py
+        ├── config.py
+        ├── describer.py
+        ├── diagram
+        │   ├── __init__.py
+        │   ├── generator.py
+        │   ├── parsers
+        │   │   ├── __init__.py
+        │   │   ├── base.py
+        │   │   ├── javascript.py
+        │   │   └── python.py
+        │   └── tree.py
+        ├── mcp_server.py
+        ├── providers
+        │   ├── __init__.py
+        │   ├── anthropic_provider.py
+        │   ├── azure_provider.py
+        │   └── base.py
+        ├── scanner.py
+        ├── synthesizer.py
+        └── vectorizer.py
+  </file_tree>
+
+  <architecture>
+    ```mermaid
+    graph TD
+        _claude(".claude/")
+        _claude_worktrees("worktrees/")
+        _claude_worktrees_naughty_poincare_2ef9aa("naughty-poincare-2ef9aa/")
+        staite("staite/")
+        staite_diagram("diagram/")
+        staite_diagram_parsers("parsers/")
+        staite_providers("providers/")
+        _claude_worktrees_naughty_poincare_2ef9aa_pyproject_toml[pyproject.toml]
+        pyproject_toml[pyproject.toml]
+        staite___init___py[__init__.py]
+        staite___main___py[__main__.py]
+        staite_assembler_py[assembler.py]
+        staite_cache_py[cache.py]
+        staite_config_py[config.py]
+        staite_describer_py[describer.py]
+        staite_diagram___init___py[__init__.py]
+        staite_diagram_generator_py[generator.py]
+        staite_diagram_parsers___init___py[__init__.py]
+        staite_diagram_parsers_base_py[base.py]
+        staite_diagram_parsers_javascript_py[javascript.py]
+        staite_diagram_parsers_python_py[python.py]
+        staite_diagram_tree_py[tree.py]
+        staite_mcp_server_py[mcp_server.py]
+        staite_providers___init___py[__init__.py]
+        staite_providers_anthropic_provider_py[anthropic_provider.py]
+        staite_providers_azure_provider_py[azure_provider.py]
+        staite_providers_base_py[base.py]
+        staite_scanner_py[scanner.py]
+        staite_synthesizer_py[synthesizer.py]
+        staite_vectorizer_py[vectorizer.py]
+        _claude_worktrees_naughty_poincare_2ef9aa --> _claude_worktrees_naughty_poincare_2ef9aa_pyproject_toml
+        _claude --> _claude_worktrees
+        _claude_worktrees --> _claude_worktrees_naughty_poincare_2ef9aa
+        staite --> staite___init___py
+        staite --> staite___main___py
+        staite --> staite_assembler_py
+        staite --> staite_cache_py
+        staite --> staite_config_py
+        staite --> staite_describer_py
+        staite_diagram --> staite_diagram___init___py
+        staite --> staite_diagram
+        staite_diagram --> staite_diagram_generator_py
+        staite_diagram_parsers --> staite_diagram_parsers___init___py
+        staite_diagram --> staite_diagram_parsers
+        staite_diagram_parsers --> staite_diagram_parsers_base_py
+        staite_diagram_parsers --> staite_diagram_parsers_javascript_py
+        staite_diagram_parsers --> staite_diagram_parsers_python_py
+        staite_diagram --> staite_diagram_tree_py
+        staite --> staite_mcp_server_py
+        staite_providers --> staite_providers___init___py
+        staite --> staite_providers
+        staite_providers --> staite_providers_anthropic_provider_py
+        staite_providers --> staite_providers_azure_provider_py
+        staite_providers --> staite_providers_base_py
+        staite --> staite_scanner_py
+        staite --> staite_synthesizer_py
+        staite --> staite_vectorizer_py
+    
+        %% dependency edges
+        staite___main___py -.-> staite_assembler_py
+        staite___main___py -.-> staite_cache_py
+        staite___main___py -.-> staite_config_py
+        staite___main___py -.-> staite_describer_py
+        staite___main___py -.-> staite_diagram_generator_py
+        staite___main___py -.-> staite_scanner_py
+        staite___main___py -.-> staite_synthesizer_py
+        staite___main___py -.-> staite_mcp_server_py
+        staite_describer_py -.-> staite_cache_py
+        staite_describer_py -.-> staite_providers_base_py
+        staite_diagram_generator_py -.-> staite_diagram_tree_py
+        staite_diagram_parsers___init___py -.-> staite_diagram_parsers_base_py
+        staite_diagram_parsers___init___py -.-> staite_diagram_parsers_javascript_py
+        staite_diagram_parsers___init___py -.-> staite_diagram_parsers_python_py
+        staite_mcp_server_py -.-> staite_vectorizer_py
+        staite_providers___init___py -.-> staite_providers_anthropic_provider_py
+        staite_providers___init___py -.-> staite_providers_azure_provider_py
+        staite_providers___init___py -.-> staite_providers_base_py
+        staite_providers_anthropic_provider_py -.-> staite_providers_base_py
+        staite_providers_azure_provider_py -.-> staite_providers_base_py
+        staite_synthesizer_py -.-> staite_providers_base_py
+    ```
+  </architecture>
+
+  <files>
+    <file path=".claude/worktrees/naughty-poincare-2ef9aa/pyproject.toml">
+    This is a `pyproject.toml` configuration file that defines the build system, metadata, and dependencies for the "staite" project, a tool that generates AI-readable project state snapshots for use as Claude chat context. The project requires Python 3.11+ and declares core dependencies including anthropic, pydantic, typer, and rich, along with optional dependencies for Azure integration and development testing. It exposes a command-line entrypoint `staite` that executes the `staite.__main__:app` function, enabling users to invoke the tool from the terminal. The configuration also specifies pytest and ruff settings for testing and code quality, establishing this file as the authoritative source of package metadata and development environment requirements.
+    </file>
+    <file path="pyproject.toml">
+    This `pyproject.toml` file defines the build configuration and metadata for the `staite` project, a Python package designed to generate AI-readable project state snapshots for use as Claude chat context. The project declares a command-line entry point (`staite`) mapped to the `staite.__main__:app` module and specifies core dependencies including `anthropic`, `pydantic`, `typer`, and `rich` for API integration, data validation, CLI functionality, and terminal formatting respectively. It defines three optional dependency groups—`vector` (for embeddings and vector databases), `azure` (for Azure AI services), and `dev` (for testing frameworks)—allowing flexible installation based on use case requirements. The configuration also establishes pytest and ruff settings, requiring Python 3.11+ and using setuptools as the build backend.
+    </file>
+    <file path="staite/__init__.py">
+    This file is the package initialization module for StAIte, a tool designed to generate project state snapshots for use as context in AI chat applications. It defines the package version as "0.1.0" and serves as the entry point for the staite module, establishing its public API surface while the actual functionality is likely implemented in submodules imported or defined elsewhere in the project.
+    </file>
+    <file path="staite/__main__.py">
+    This file is the CLI entry point for StAIte, a tool that generates AI-readable project state snapshots using the Typer framework. It defines two main commands: `run()` which orchestrates the full pipeline of scanning files, describing them via LLM providers, synthesizing insights, generating diagrams, and assembling a STATE.xml output; and `serve()` which starts an MCP (Model Context Protocol) server exposing the generated state via stdio or HTTP/SSE transports. The `run()` command integrates multiple staite modules including scanner, describer, synthesizer, diagram generator, and assembler, managing caches and progress reporting throughout. The `serve()` command conditionally imports and delegates to the MCP server implementation, handling vector database indexing and tool exposure for Claude integration. Both commands support configurable logging via the `_setup_logging()` helper and error handling with user-friendly console output using Rich. The file establishes the primary user-facing interface for the staite project, connecting configuration loading, LLM API interactions, and output generation into a cohesive workflow.
+    </file>
+    <file path="staite/assembler.py">
+    This module assembles computed project metadata into a Claude-optimized XML state file with standardized Anthropic-recommended tags for reliable parsing. It exports two primary functions: `assemble()` which constructs the complete XML document by merging project name, instructions, conventions, use cases, file tree, architecture diagram, and file descriptions into a hierarchical structure, and `write()` which persists the XML to disk with UTF-8 encoding. The `_tag()` helper generates properly indented and escaped XML elements, while `_conventions_content()` merges user-provided and AI-inferred conventions into labeled sections. This module represents the final aggregation step in the project analysis pipeline, transforming intermediate outputs from other components (scanner, diagram generator) into a single formatted artifact suitable for inclusion in Claude's project context.
+    </file>
+    <file path="staite/cache.py">
+    This module implements a persistent cache for AI-generated file descriptions, storing a mapping of relative file paths to their SHA-256 content hashes and descriptions in JSON format. The `DescriptionCache` class provides load/get/set/save operations to avoid re-describing files whose content hasn't changed, while the `CacheEntry` Pydantic model represents individual cache entries with hash and description fields. The `hash_file()` utility function computes SHA-256 digests of file contents in 64 KiB chunks for efficient memory usage. This cache is central to the staite project's workflow, enabling it to skip redundant AI descriptions for unchanged files by comparing current file hashes against cached entries.
+    </file>
+    <file path="staite/config.py">
+    This file defines the configuration model and loading mechanism for the StAIte project, a software analysis tool that processes source code using AI providers. It exports two Pydantic model classes: `AzureConfig` (encapsulating Azure AI Foundry authentication details) and `StaiteConfig` (the main configuration with project metadata, file patterns, AI model settings, and cache paths), along with a `load_config()` function that parses and validates YAML configuration files. The `StaiteConfig` model includes validators to ensure required fields are non-empty, that file paths are normalized, and that provider-specific configurations (like Azure credentials) are present when needed. This configuration system is the entry point for initializing StAIte runs, enabling users to specify which files to analyze, which AI model and provider to use, and how to cache results.
+    </file>
+    <file path="staite/describer.py">
+    This module generates concise AI-powered descriptions of source files using the Anthropic SDK, with description length (2–6 sentences) scaled dynamically based on file size. It defines the `DescribeResult` dataclass to encapsulate descriptions and cache miss counts, along with helper functions `_sentence_count()` and `_build_prompt()` that determine appropriate description length and construct prompts for the LLM. The core async function `_describe_one()` handles individual file description with caching via file hash, returning early for cached entries and calling the LLM provider only for new/changed files. The main entry point `describe_files()` orchestrates parallel description of multiple files using an asyncio semaphore to enforce per-provider concurrency limits (10 for Anthropic, 5 for Azure). Results are collected with error handling, cache mutations are persisted, and logging tracks processing progress and cache performance. This module integrates into a larger project analysis system by providing efficient, cached file summaries that feed into broader code understanding workflows.
+    </file>
+    <file path="staite/diagram/__init__.py">
+    This file is the package initialization module for the `staite.diagram` subpackage, which handles Mermaid diagram generation for visualizing directory trees and optional dependency relationships within a software project. The file currently contains only a docstring and likely re-exports key classes or functions from submodules (not shown in the provided content) that implement diagram generation functionality.
+    </file>
+    <file path="staite/diagram/generator.py">
+    This file orchestrates the generation of Mermaid diagram output by combining a directory tree structure with language-specific dependency edges resolved from source files. It exports the `generate()` function which takes a list of project files and a root path, uses registered language parsers to extract dependencies from each file, and resolves those dependencies to actual file paths using the `_resolve_dep()` helper function which handles JavaScript relative paths, Python dotted imports, and Python relative imports. The `_resolve_dep()` function implements cross-language import resolution logic by normalizing paths, trying multiple file extensions, and matching against a set of available files. This module acts as the integration point between the tree diagram builder and language-specific parsers, producing enriched Mermaid output that visualizes both project structure and inter-file dependencies.
+    </file>
+    <file path="staite/diagram/parsers/__init__.py">
+    This module implements a registry system for language parsers used in the diagram generation pipeline of the staite project. It maintains a `_DEFAULT_PARSERS` list containing built-in parsers for Python and JavaScript, and provides a `build_registry()` function that creates a mapping from file extensions to parser instances, with support for custom parsers that can override defaults. The module exports `LanguageParser` (the base parser interface) and `build_registry` (the registry construction function) for use by other components that need to parse source files. This design allows flexible extension of language support while maintaining a sensible default configuration for common languages.
+    </file>
+    <file path="staite/diagram/parsers/base.py">
+    This file defines a `LanguageParser` protocol that establishes the interface for language-specific dependency parsers in the staite diagram generation system. The protocol specifies two required members: an `extensions` attribute listing file types the parser handles (e.g., `[".py"]`), and an `extract_dependencies` method that analyzes file content to return raw import/dependency strings. Implementors of this protocol are responsible for inspecting source files and extracting dependency references in their original form (e.g., `"./utils"`, `"services.auth"`), which are later resolved by the diagram generator against the project's scanned file list. As a runtime-checkable protocol, it enables duck-typing for any class that implements these members, allowing flexible composition of language-specific parsers across the project.
+    </file>
+    <file path="staite/diagram/parsers/javascript.py">
+    This file implements a JavaScript/TypeScript dependency parser that extracts relative import paths from source code using regex pattern matching, supporting ES modules (import/export) and CommonJS (require) syntax across .js, .jsx, .ts, .tsx, .mjs, and .cjs files. The core export is the `JavaScriptParser` class, which provides an `extract_dependencies()` method that returns a list of relative import paths (those starting with `.` or `/`) from file content, deliberately ignoring third-party package imports. The regex pattern `_IMPORT_RE` is the implementation backbone, designed to match various import/export statement patterns without requiring a full AST parser. Within the broader project architecture (staite), this parser likely serves as one of multiple language-specific dependency extractors that feed into a diagram generation system for visualizing intra-project file dependencies.
+    </file>
+    <file path="staite/diagram/parsers/python.py">
+    This file implements a Python dependency parser for the staite diagram project that extracts import statements from Python source code. The `PythonParser` class provides an `extract_dependencies` method that uses Python's `ast` module to safely parse Python files and return a list of all imported module names, handling both `import x` and `from x import y` statements while gracefully falling back to an empty list on syntax errors. The parser supports relative imports by prefixing module names with dots based on the import level, and registers `.py` as its target file extension. It integrates into a broader plugin-like architecture where different language-specific parsers extract dependencies for dependency diagram generation.
+    </file>
+    <file path="staite/diagram/tree.py">
+    This module generates Mermaid diagram syntax representing a project's directory tree structure by converting file paths into a top-down graph (`graph TD`). The primary export is `build_tree_diagram()`, which accepts a list of Path objects and produces a Mermaid diagram string where directories are rendered as rounded boxes and files as plain boxes, with edges representing parent-child relationships. A helper function `_node_id()` sanitizes path strings into valid Mermaid node identifiers by replacing special characters. This component fits into the broader `staite` project as a visualization tool that transforms hierarchical file structures into readable diagram representations for documentation or analysis purposes.
+    </file>
+    <file path="staite/mcp_server.py">
+    This file implements an MCP (Model Context Protocol) server that exposes the StAIte vector index through three queryable tools: `search()` for semantic search over file descriptions, `get_file()` for direct file lookup, and `get_overview()` for project summaries. The core functionality is provided by `_get_server()`, which builds a FastMCP server instance, initializes the vector index if needed, and registers the three tools that query the Chroma collection using embeddings generated via the sentence-transformers model. The `serve()` function is the public entry point that starts the server with configurable transport (stdio or SSE) and optional network binding. This module bridges StAIte's vector indexing system with external tools and agents via the MCP protocol, enabling natural-language querying of project documentation.
+    </file>
+    <file path="staite/providers/__init__.py">
+    This file serves as the provider factory module for the staite project, exposing a public API for instantiating language model providers. It defines the `create_provider()` factory function that validates configuration parameters and returns the appropriate `LLMProvider` subclass (`AnthropicProvider` or `AzureProvider`) based on the `provider_type` argument, with special handling for Azure-specific credentials and endpoint validation. The module re-exports the base `LLMProvider` class and concrete provider implementations through its `__all__` list, establishing a clean public interface for provider management. As a factory pattern implementation, this module decouples provider selection logic from the rest of the codebase, allowing callers to request providers by name without importing provider-specific classes directly.
+    </file>
+    <file path="staite/providers/anthropic_provider.py">
+    This file implements an LLM provider for the Anthropic API within the staite project, wrapping the Anthropic AsyncAnthropic client to provide a consistent interface. The `AnthropicProvider` class manages async communication with Anthropic's models, accepts a model name and optional client instance, and tracks token usage across API calls. It exposes a `complete()` method for generating text completions with configurable max tokens, and implements async context manager protocols (`__aenter__` and `__aexit__`) to properly manage the client's connection lifecycle. The provider integrates with the broader staite architecture by extending a base provider pattern and maintaining TokenUsage statistics for monitoring API consumption.
+    </file>
+    <file path="staite/providers/azure_provider.py">
+    This file implements an `AzureProvider` class that enables integration with Azure AI Foundry's language models through the `azure-ai-inference` SDK, supporting both API key and `DefaultAzureCredential` authentication methods. The provider follows an async context manager pattern (`__aenter__`/`__aexit__`) to manage the lifecycle of an Azure `ChatCompletionsClient`, and implements a `complete()` method that sends prompts to the model while tracking token usage via a `TokenUsage` object. It is part of the staite project's provider infrastructure, allowing users to swap different LLM backends (as evidenced by the import from `staite.providers.base`). The implementation handles missing Azure dependencies gracefully by raising informative `ImportError` exceptions and uses logging to track authentication method selection and client lifecycle events.
+    </file>
+    <file path="staite/providers/base.py">
+    This file defines the foundational protocol and data structures for LLM provider implementations in the staite project. It exports two main components: `TokenUsage`, a dataclass that tracks cumulative input/output token consumption with a computed total and formatted string representation, and `LLMProvider`, a runtime-checkable Protocol that specifies the minimal async interface all LLM backends must implement (including `complete()` for sending prompts and context manager methods for resource management). The `LLMProvider` protocol establishes a contract requiring a `usage` attribute and async methods, enabling the describer and synthesizer components to interact with any conforming LLM backend without tight coupling. This design allows the project to support multiple LLM providers (e.g., different APIs) through a unified, type-safe interface.
+    </file>
+    <file path="staite/scanner.py">
+    This module implements filesystem scanning for the Staite project by traversing directories and filtering files based on gitignore-style patterns. It exports the `FileTree` dataclass (containing matched files and a rendered tree representation) and the `scan()` function, which walks a directory tree, applies include/exclude pathspec patterns, and returns structured results. The module includes a helper `_render_tree()` function that converts a flat file list into a human-readable indented tree structure suitable for embedding in state files. This scanner serves as the foundational file discovery mechanism that prepares file lists for subsequent AI processing in the broader project workflow.
+    </file>
+    <file path="staite/synthesizer.py">
+    This module implements high-level synthesis of project use-cases and coding conventions by making two concurrent LLM calls, using cached file descriptions as input. It defines three main classes: `SynthesisRecord` (a Pydantic model storing cached synthesis outputs), `SynthesisCache` (manages persistence and retrieval of synthesis data to `.staite/synthesis.json`), and `SynthesisResult` (a dataclass returned to callers containing use-cases, conventions, and a regeneration flag). The core `synthesize()` function decides whether to reuse cached synthesis or regenerate based on a configurable threshold of file changes, then either returns the cached result or invokes `_call_both()` to execute both prompts concurrently via an LLM provider. Two helper functions, `_use_cases_prompt()` and `_conventions_prompt()`, construct detailed system prompts that incorporate project metadata (name, file tree, descriptions) and user input to elicit specific, actionable AI responses. Within the broader staite project, this module serves as the synthesis layer that transforms fine-grained file-level descriptions into coarse-grained project understanding for downstream AI assistant use.
+    </file>
+    <file path="staite/vectorizer.py">
+    This file implements vector embedding and indexing for a STATE.xml project documentation file using ChromaDB and sentence transformers. It provides three main functions: `_parse_chunks()` extracts text sections from STATE.xml with metadata, `build_index()` embeds chunks using the all-MiniLM-L6-v2 model and persists them to a ChromaDB collection, and `load_collection()` retrieves an existing index for querying. The module handles XML parsing edge cases (invalid control characters and unescaped ampersands) and supports idempotent re-indexing on startup. It serves as the vector search backend for the staite project, enabling semantic search over project documentation and architecture.
+    </file>
+  </files>
+</project_state>

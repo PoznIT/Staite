@@ -121,33 +121,6 @@ def run(
     console.print(f"[bold red]Provider error:[/bold red] {exc}")
     raise typer.Exit(code=1) from exc
 
-  async def _run_async() -> tuple[DescribeResult, str, str]:
-    async with provider:
-      describe_result = await describe_files(
-        provider=provider,
-        root=project_root,
-        rel_paths=file_tree.files,
-        cache=desc_cache,
-        concurrency=CONCURRENCY_AZURE if config.provider == "azure" else CONCURRENCY_ANTHROPIC,
-      )
-
-      synthesis_cache = SynthesisCache.load(project_root / config.synthesis_cache)
-      synthesis_result = await synthesize(
-        provider=provider,
-        project_name=config.project_name,
-        instructions=config.instructions,
-        user_conventions=config.conventions,
-        tree_lines=file_tree.tree_lines,
-        descriptions=describe_result.descriptions,
-        cache=synthesis_cache,
-        miss_count=describe_result.cache_miss_count,
-        regen_threshold=config.regen_threshold,
-        force_regen=regen_synthesis
-      )
-      synthesis_cache.save()
-
-    return describe_result, synthesis_result.use_cases_diagram, synthesis_result.conventions_ai
-
   with Progress(
       SpinnerColumn(),
       TextColumn("[progress.description]{task.description}"),
@@ -156,7 +129,47 @@ def run(
       console=console,
       transient=True,
   ) as progress:
-    progress.add_task(f"Describing {len(file_tree.files)} file(s) + synthesising…", total=None)
+    total_files = len(file_tree.files)
+    describe_task = progress.add_task("Describing files…", total=total_files)
+
+    def on_file_done(rel_path: str, was_miss: bool) -> None:
+      label = "API" if was_miss else "cached"
+      progress.update(
+        describe_task,
+        advance=1,
+        description=f"[dim]{rel_path}[/dim] ({label})",
+      )
+
+    async def _run_async() -> tuple[DescribeResult, str, str]:
+      async with provider:
+        describe_result = await describe_files(
+          provider=provider,
+          root=project_root,
+          rel_paths=file_tree.files,
+          cache=desc_cache,
+          concurrency=CONCURRENCY_AZURE if config.provider == "azure" else CONCURRENCY_ANTHROPIC,
+          on_file_done=on_file_done,
+        )
+
+        synth_task = progress.add_task("Synthesising…", total=None)
+
+        synthesis_cache = SynthesisCache.load(project_root / config.synthesis_cache)
+        synthesis_result = await synthesize(
+          provider=provider,
+          project_name=config.project_name,
+          instructions=config.instructions,
+          user_conventions=config.conventions,
+          tree_lines=file_tree.tree_lines,
+          descriptions=describe_result.descriptions,
+          cache=synthesis_cache,
+          miss_count=describe_result.cache_miss_count,
+          regen_threshold=config.regen_threshold,
+          force_regen=regen_synthesis
+        )
+        synthesis_cache.save()
+
+      return describe_result, synthesis_result.use_cases_diagram, synthesis_result.conventions_ai
+
     try:
       describe_result, use_cases, ai_conventions = asyncio.run(_run_async())
     except Exception as exc:
@@ -229,16 +242,26 @@ def update(
     console.print(f"[bold red]Error:[/bold red] STATE.json not found at {state}")
     raise typer.Exit(code=1)
 
+  payload = state.read_bytes()
+  size_kb = len(payload) / 1024
+  console.print(f"[dim]Pushing {state} ({size_kb:.1f} KB) → {url}[/dim]")
+
   try:
-    payload = state.read_bytes()
     req = request.Request(
       url,
       data=payload,
       headers={"Content-Type": "application/json"},
       method="POST",
     )
-    with request.urlopen(req, timeout=30) as resp:
-      body = json.loads(resp.read())
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+      progress.add_task("Indexing on server…", total=None)
+      with request.urlopen(req, timeout=60) as resp:
+        body = json.loads(resp.read())
   except HTTPError as exc:
     body = json.loads(exc.read())
     console.print(f"[bold red]Server error {exc.code}:[/bold red] {body.get('message', exc)}")
@@ -248,10 +271,17 @@ def update(
     console.print(f"Is the server running at [bold]{url}[/bold]?")
     raise typer.Exit(code=1) from exc
 
+  db = body.get("db", {})
+  action = db.get("action", "updated").capitalize()
   console.print(
-    f"[bold green]✓ Updated project [cyan]{body['project']}[/cyan]"
+    f"[bold green]✓ {action} project [cyan]{body['project']}[/cyan]"
     f" — {body['chunks']} chunks indexed[/bold green]"
   )
+  if db:
+    fields = ", ".join(db.get("overview_fields") or []) or "none"
+    console.print(
+      f"[dim]DB: {db['action']} · overview fields: {fields} · indexed at {db['indexed_at']}[/dim]"
+    )
 
 
 @app.command()

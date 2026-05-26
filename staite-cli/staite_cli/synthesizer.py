@@ -63,7 +63,7 @@ class SynthesisCache:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(self._record.model_dump_json(indent=2), encoding="utf-8")
         self._dirty = False
-        logger.info("Synthesis cache saved to %s", self._path)
+        logger.debug("Synthesis cache saved to %s", self._path)
 
 
 # ---------------------------------------------------------------------------

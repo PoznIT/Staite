@@ -240,16 +240,29 @@ def _get_server(config: AppSettings) -> FastMCP:
         try:
             pool = await db.init_pool(config.postgres)
             overview = VectorClient.extract_overview_data(state)
-            await db.upsert_project(pool, project_name, file_chunk_count)
-            await db.upsert_overview(pool, project_name, **overview)
+            db_action, indexed_at = await db.upsert_project(pool, project_name, file_chunk_count)
+            overview_fields = await db.upsert_overview(pool, project_name, **overview)
         except Exception as exc:
             logger.exception("Failed to persist project %r to PostgreSQL", project_name)
             return JSONResponse({"status": "error", "message": f"DB error: {exc}"}, status_code=500)
 
         logger.info(
-            "Updated index and DB for %r via /update (%d file chunks)", project_name, file_chunk_count
+            "%s index and DB for %r via /update (%d file chunks, fields: %s)",
+            db_action.capitalize(),
+            project_name,
+            file_chunk_count,
+            overview_fields,
         )
-        return JSONResponse({"status": "ok", "project": project_name, "chunks": file_chunk_count})
+        return JSONResponse({
+            "status": "ok",
+            "project": project_name,
+            "chunks": file_chunk_count,
+            "db": {
+                "action": db_action,
+                "indexed_at": indexed_at,
+                "overview_fields": overview_fields,
+            },
+        })
 
     return mcp
 
