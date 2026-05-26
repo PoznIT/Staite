@@ -43,6 +43,11 @@ def _setup_logging(level: str) -> None:
     format="%(message)s",
     handlers=[RichHandler(console=console, show_path=False, markup=True)],
   )
+  # Azure SDKs are very chatty at INFO (every HTTP request/response header is logged).
+  # Pin them to WARNING unless the caller explicitly wants DEBUG output.
+  if level.upper() != "DEBUG":
+    for _noisy in ("azure.core", "azure.identity", "azure.ai"):
+      logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
 @app.command()
