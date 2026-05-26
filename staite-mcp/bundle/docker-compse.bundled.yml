@@ -33,7 +33,23 @@ services:
       retries: 5
       start_period: 15s
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: staite
+      POSTGRES_USER: staite
+      POSTGRES_PASSWORD: staite
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U staite -d staite" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   chroma_data:
   ollama_data:
+  postgres_data:

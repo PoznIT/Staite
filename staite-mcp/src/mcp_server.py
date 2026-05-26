@@ -1,10 +1,17 @@
 """MCP server exposing one or more StAIte vector indexes as queryable tools.
 
-Four tools:
-  search(query, k=5, project=None)  — semantic search; cross-project if project omitted
+Six tools:
+  search(query, k=5, project=None)  — semantic search over file descriptions
   get_file(path, project=None)       — direct lookup of a file's description
-  get_overview(project)              — use_cases, conventions, and architecture for a project
+  get_overview(project)              — use-cases / high-level purpose for a project
+  get_conventions(project)           — coding conventions and architectural patterns
+  get_diagram(project)               — architecture diagram (Mermaid)
+  get_file_tree(project)             — file tree
   list_projects()                    — list all indexed projects
+
+Storage split:
+  ChromaDB  — file-description vectors (search / get_file)
+  PostgreSQL — projects registry + overviews / conventions / diagrams / file trees
 
 When running with --transport sse or --transport http, a POST /update endpoint is also
 available on the same port for pushing a new STATE.json payload without restarting.
@@ -18,14 +25,15 @@ import httpx
 from functools import lru_cache
 
 from mcp.server.fastmcp import FastMCP
-from sentence_transformers import SentenceTransformer
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from src.config import AppSettings, OllamaSettings
 from src.vectorizer import VectorClient, _collection_name
+from src import db
 
 logger = logging.getLogger(__name__)
+
 
 def _embed(text: str, ollama: OllamaSettings) -> list[float]:
     with httpx.Client(timeout=30) as client:
@@ -34,7 +42,7 @@ def _embed(text: str, ollama: OllamaSettings) -> list[float]:
             json={"model": ollama.model, "input": [text]},
         )
         response.raise_for_status()
-        return response.json()["embeddings"][0]  # single text → first element
+        return response.json()["embeddings"][0]
 
 
 def _get_server(config: AppSettings) -> FastMCP:
@@ -43,17 +51,24 @@ def _get_server(config: AppSettings) -> FastMCP:
     vector_client = VectorClient(config.chroma, config.ollama)
     mcp = FastMCP("staite", host=config.server.host, port=config.server.port)
 
+    # ------------------------------------------------------------------
+    # MCP tools
+    # ------------------------------------------------------------------
+
     @mcp.tool()
-    def search(query: str, k: int = 5, project: str | None = None) -> str:
+    async def search(query: str, k: int = 5, project: str | None = None) -> str:
         """Semantic search over codebase file descriptions and summaries.
 
         Returns the top-k most relevant chunks across all indexed projects.
         Pass project= to restrict results to a single project.
         """
         embedding = _embed(query, config.ollama)
-        project_names = (
-            [project] if project else vector_client.list_indexed_projects()
-        )
+
+        if project:
+            project_names = [project]
+        else:
+            pool = await db.init_pool(config.postgres)
+            project_names = await db.project_names(pool)
 
         if not project_names:
             return json.dumps([])
@@ -88,16 +103,18 @@ def _get_server(config: AppSettings) -> FastMCP:
         return json.dumps(all_items[:k], indent=2)
 
     @mcp.tool()
-    def get_file(path: str, project: str | None = None) -> str:
+    async def get_file(path: str, project: str | None = None) -> str:
         """Return the AI-generated description for a specific file path.
 
         path should be the relative path as it appears in STATE.json,
         e.g. 'staite/config.py' or 'src/auth/handler.ts'.
         If project is omitted and multiple projects are loaded, all matches are returned.
         """
-        project_names = (
-            [project] if project else vector_client.list_indexed_projects()
-        )
+        if project:
+            project_names = [project]
+        else:
+            pool = await db.init_pool(config.postgres)
+            project_names = await db.project_names(pool)
 
         items: list[dict] = []
         for proj_name in project_names:
@@ -118,39 +135,58 @@ def _get_server(config: AppSettings) -> FastMCP:
             return json.dumps({"error": f"File not found in index: {path}"})
         return json.dumps(items if len(items) > 1 else items[0], indent=2)
 
+    async def _fetch_overview_field(project: str, field: str) -> str:
+        pool = await db.init_pool(config.postgres)
+        overview = await db.get_overview(pool, project)
+        if overview is None:
+            available = await db.project_names(pool)
+            return json.dumps({"error": f"Unknown project {project!r}. Available: {available}"})
+        value = overview.get(field)
+        if not value:
+            return json.dumps({"error": f"No {field} found for project {project!r}"})
+        return json.dumps({"project": project, field: value}, indent=2)
+
     @mcp.tool()
-    def get_overview(project: str) -> str:
-        """Return high-level summaries for a project: use_cases, conventions, and architecture diagram.
+    async def get_overview(project: str) -> str:
+        """Return the use-cases / high-level purpose description for a project.
 
         project must be one of the indexed project names (see list_projects).
         """
-        try:
-            col = vector_client.load_collection(_collection_name(project))
-        except FileNotFoundError:
-            available = vector_client.list_indexed_projects()
-            return json.dumps({"error": f"Unknown project {project!r}. Available: {available}"})
-
-        overview_ids = ["overview", "conventions", "diagram"]
-        results = col.get(ids=overview_ids, include=["documents", "metadatas"])
-        items = [
-            {"id": id_, "project": project, "text": doc, "metadata": meta}
-            for id_, doc, meta in zip(overview_ids, results["documents"], results["metadatas"])
-            if doc
-        ]
-        return json.dumps(items, indent=2)
+        return await _fetch_overview_field(project, "use_cases")
 
     @mcp.tool()
-    def list_projects() -> str:
+    async def get_conventions(project: str) -> str:
+        """Return the coding conventions and architectural patterns for a project.
+
+        project must be one of the indexed project names (see list_projects).
+        """
+        return await _fetch_overview_field(project, "conventions")
+
+    @mcp.tool()
+    async def get_diagram(project: str) -> str:
+        """Return the architecture diagram (Mermaid) for a project.
+
+        project must be one of the indexed project names (see list_projects).
+        """
+        return await _fetch_overview_field(project, "diagram")
+
+    @mcp.tool()
+    async def get_file_tree(project: str) -> str:
+        """Return the file tree for a project.
+
+        project must be one of the indexed project names (see list_projects).
+        """
+        return await _fetch_overview_field(project, "file_tree")
+
+    @mcp.tool()
+    async def list_projects() -> str:
         """List all projects currently indexed in the vector store."""
-        project_names = vector_client.list_indexed_projects()
-        info = []
-        for proj_name in project_names:
-            try:
-                col = vector_client.load_collection(_collection_name(proj_name))
-                info.append({"project": proj_name, "chunks": col.count()})
-            except FileNotFoundError:
-                info.append({"project": proj_name, "chunks": 0})
-        return json.dumps(info, indent=2)
+        pool = await db.init_pool(config.postgres)
+        return json.dumps(await db.list_projects(pool), indent=2)
+
+    # ------------------------------------------------------------------
+    # CORS preflight routes
+    # ------------------------------------------------------------------
 
     @mcp.custom_route("/sse", methods=["OPTIONS"])
     async def sse_cors_preflight(request: Request) -> Response:
@@ -176,6 +212,10 @@ def _get_server(config: AppSettings) -> FastMCP:
             },
         )
 
+    # ------------------------------------------------------------------
+    # /update endpoint — writes to both ChromaDB (file vectors) and PG
+    # ------------------------------------------------------------------
+
     @mcp.custom_route("/update", methods=["POST"])
     async def update_handler(request: Request) -> JSONResponse:
         try:
@@ -189,14 +229,27 @@ def _get_server(config: AppSettings) -> FastMCP:
                 {"status": "error", "message": "Missing metadata.name"}, status_code=422
             )
 
+        # 1. Embed file descriptions → ChromaDB
         try:
-            _col_name, chunk_count = vector_client.build_index_from_dict(state)
+            _col_name, file_chunk_count = vector_client.build_index_from_dict(state)
         except Exception as exc:
-            logger.exception("Failed to re-index project %r", project_name)
+            logger.exception("Failed to re-index project %r in ChromaDB", project_name)
             return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
 
-        logger.info("Updated index for %r via /update (%d chunks)", project_name, chunk_count)
-        return JSONResponse({"status": "ok", "project": project_name, "chunks": chunk_count})
+        # 2. Persist structured metadata → PostgreSQL
+        try:
+            pool = await db.init_pool(config.postgres)
+            overview = VectorClient.extract_overview_data(state)
+            await db.upsert_project(pool, project_name, file_chunk_count)
+            await db.upsert_overview(pool, project_name, **overview)
+        except Exception as exc:
+            logger.exception("Failed to persist project %r to PostgreSQL", project_name)
+            return JSONResponse({"status": "error", "message": f"DB error: {exc}"}, status_code=500)
+
+        logger.info(
+            "Updated index and DB for %r via /update (%d file chunks)", project_name, file_chunk_count
+        )
+        return JSONResponse({"status": "ok", "project": project_name, "chunks": file_chunk_count})
 
     return mcp
 
