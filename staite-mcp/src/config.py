@@ -17,6 +17,10 @@ class OllamaSettings(BaseModel):
     num_ctx: int = Field(default=8192)
 
 
+class PostgresSettings(BaseModel):
+    dsn: str = Field(default="postgresql://localhost/staite")
+
+
 class ServerSettings(BaseModel):
     transport: str = Field(default="stdio")
     host: str = Field(default="0.0.0.0")
@@ -30,6 +34,7 @@ class AppSettings(BaseSettings):
 
     chroma: ChromaDbSettings = Field(default_factory=ChromaDbSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     log_level: str = Field(default="INFO")
     server: ServerSettings = Field(default_factory=ServerSettings)
 

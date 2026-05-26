@@ -18,12 +18,6 @@ logger = logging.getLogger(__name__)
 _COLLECTION_PREFIX = "staite__"
 _MODEL_NAME = "all-MiniLM-L6-v2"
 
-_SECTION_KEYS: list[tuple[str, str]] = [
-    ("use_cases", "overview"),
-    ("file_tree", "file_tree"),
-    ("architecture", "diagram"),
-]
-
 
 def _collection_name(project_name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", project_name.lower()).strip("_")
@@ -67,30 +61,36 @@ class VectorClient:
         return self.__chroma
 
     @staticmethod
-    def _parse_chunks_from_dict(doc: dict, project_name: str) -> list[dict]:
-        chunks: list[dict] = []
+    def extract_overview_data(doc: dict) -> dict:
+        """Extract structured non-file metadata for PostgreSQL storage.
 
+        Returns a dict with keys ``use_cases``, ``conventions``, ``diagram``,
+        and ``file_tree`` (each a ``str | None``).
+        """
         conv = doc.get("conventions", {})
         parts = []
         if conv.get("user", "").strip():
             parts.append(f"[User-defined]\n{conv['user'].strip()}")
         if conv.get("ai", "").strip():
             parts.append(f"[AI-inferred]\n{conv['ai'].strip()}")
-        if parts:
-            chunks.append({
-                "id": "conventions",
-                "text": "\n\n".join(parts),
-                "metadata": {"type": "conventions", "project": project_name},
-            })
+        conventions_text = "\n\n".join(parts) if parts else None
 
-        for key, chunk_type in _SECTION_KEYS:
-            text = doc.get(key, "")
-            if text and text.strip():
-                chunks.append({
-                    "id": chunk_type,
-                    "text": text.strip(),
-                    "metadata": {"type": chunk_type, "project": project_name},
-                })
+        return {
+            "use_cases": doc.get("use_cases", "").strip() or None,
+            "conventions": conventions_text,
+            "diagram": doc.get("architecture", "").strip() or None,
+            "file_tree": doc.get("file_tree", "").strip() or None,
+        }
+
+    @staticmethod
+    def _parse_chunks_from_dict(doc: dict, project_name: str) -> list[dict]:
+        """Build ChromaDB-bound chunks — file descriptions only.
+
+        Structured metadata (overview, conventions, diagram, file_tree) is
+        intentionally excluded here; use :meth:`extract_overview_data` to
+        retrieve that data and persist it to PostgreSQL instead.
+        """
+        chunks: list[dict] = []
 
         for path, desc in doc.get("files", {}).items():
             if desc and desc.strip():
@@ -100,7 +100,7 @@ class VectorClient:
                     "metadata": {"type": "file", "path": path, "project": project_name},
                 })
 
-        logger.debug("Parsed %d chunks for project %r", len(chunks), project_name)
+        logger.debug("Parsed %d file chunks for project %r", len(chunks), project_name)
         return chunks
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
